@@ -25,21 +25,29 @@ public class Server {
         @Override
         public StreamObserver<BidiStream.Req> go(final StreamObserver<BidiStream.Res> responseObserver) {
             System.out.println("Created a stream.");
+
             return new StreamObserver<>() {
+
+                private final BidiStream.Res[] buffer = new BidiStream.Res[1024];
+                private int bufferIndex = 0;
 
                 @Override
                 public void onNext(BidiStream.Req request) {
-
                     final String response = request.getS()
                         .substring(Math.max(0, request.getI()), Math.min(Math.max(0, request.getI()) + Math.max(1, request.getC()), request.getS().length()))
                         .repeat(Math.max(1, request.getN()));
 
-                    responseObserver.onNext(
-                        BidiStream.Res.newBuilder()
-                            .setId(request.getId())
-                            .setR(response)
-                            .build()
-                    );
+                    BidiStream.Res res = BidiStream.Res.newBuilder()
+                        .setId(request.getId())
+                        .setR(response)
+                        .build();
+
+                    if (bufferIndex == buffer.length) {
+                        sendMessages();
+                        bufferIndex = 0;
+                    }
+
+                    buffer[bufferIndex++] = res;
                 }
 
                 @Override
@@ -49,8 +57,16 @@ public class Server {
 
                 @Override
                 public void onCompleted() {
+                    sendMessages();
                     System.out.println("Closing a stream.");
                     responseObserver.onCompleted();
+                }
+
+                private void sendMessages() {
+                    for (int i = 0; i < bufferIndex; i++) {
+                        responseObserver.onNext(buffer[i]);
+                        buffer[i] = null;
+                    }
                 }
             };
         }
